@@ -13,64 +13,79 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.neighbors import KNeighborsClassifier
 
-# Function to load dataset
+# Function to load dataset (Cached for performance)
 @st.cache_data
 def load_data():
     file_path = "car_evaluation.csv"  # Ensure this file is in your GitHub repo
-    df = pd.read_csv(file_path)
-    return df
+    try:
+        data = pd.read_csv(file_path)
+        return data
+    except FileNotFoundError:
+        st.error("Dataset file 'car_evaluation.csv' not found. Please check the file path.")
+        return pd.DataFrame()  # Return empty DataFrame if file not found
 
 # Load dataset
 df = load_data()
 
-# Encode categorical features to numerical values
-encoder = LabelEncoder()
-for col in df.columns:
-    df[col] = encoder.fit_transform(df[col])
+# If dataset is loaded correctly
+if not df.empty:
+    # Encode categorical features to numerical values
+    encoders = {}  # Store encoders to decode predictions later
+    for col in df.columns:
+        encoders[col] = LabelEncoder()
+        df[col] = encoders[col].fit_transform(df[col])
 
-# Splitting dataset
-X = df.drop(columns=["class"])
-y = df["class"]
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    # Splitting dataset
+    X = df.drop(columns=["class"])
+    y = df["class"]
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Train KNN model
-knn = KNeighborsClassifier(n_neighbors=5)
-knn.fit(X_train, y_train)
+    # Train KNN model
+    knn = KNeighborsClassifier(n_neighbors=5)
+    knn.fit(X_train, y_train)
 
-# Streamlit UI
-st.title("🚗 Car Quality Prediction using KNN")
+    # Streamlit UI
+    st.title("🚗 Car Quality Prediction using KNN")
 
-st.sidebar.header("Input Car Features")
+    st.sidebar.header("Input Car Features")
 
-# Dropdown options based on dataset values
-buying_options = ["vhigh", "high", "med", "low"]
-maint_options = ["vhigh", "high", "med", "low"]
-doors_options = ["2", "3", "4", "5more"]
-persons_options = ["2", "4", "more"]
-lug_boot_options = ["small", "med", "big"]
-safety_options = ["low", "med", "high"]
+    # Dropdown options from dataset
+    buying_options = list(encoders["buying"].classes_)
+    maint_options = list(encoders["maint"].classes_)
+    doors_options = list(encoders["doors"].classes_)
+    persons_options = list(encoders["persons"].classes_)
+    lug_boot_options = list(encoders["lug_boot"].classes_)
+    safety_options = list(encoders["safety"].classes_)
 
-# User Inputs
-buying = st.sidebar.selectbox("Buying Price", buying_options)
-maint = st.sidebar.selectbox("Maintenance Cost", maint_options)
-doors = st.sidebar.selectbox("Number of Doors", doors_options)
-persons = st.sidebar.selectbox("Number of Persons", persons_options)
-lug_boot = st.sidebar.selectbox("Luggage Boot Size", lug_boot_options)
-safety = st.sidebar.selectbox("Safety", safety_options)
+    # User Inputs
+    buying = st.sidebar.selectbox("Buying Price", buying_options)
+    maint = st.sidebar.selectbox("Maintenance Cost", maint_options)
+    doors = st.sidebar.selectbox("Number of Doors", doors_options)
+    persons = st.sidebar.selectbox("Number of Persons", persons_options)
+    lug_boot = st.sidebar.selectbox("Luggage Boot Size", lug_boot_options)
+    safety = st.sidebar.selectbox("Safety", safety_options)
 
-# Convert inputs to numerical values
-user_input = pd.DataFrame({
-    "buying": [buying_options.index(buying)],
-    "maint": [maint_options.index(maint)],
-    "doors": [doors_options.index(doors)],
-    "persons": [persons_options.index(persons)],
-    "lug_boot": [lug_boot_options.index(lug_boot)],
-    "safety": [safety_options.index(safety)],
-})
+    # Convert user input to numeric values
+    user_input = pd.DataFrame({
+        "buying": [encoders["buying"].transform([buying])[0]],
+        "maint": [encoders["maint"].transform([maint])[0]],
+        "doors": [encoders["doors"].transform([doors])[0]],
+        "persons": [encoders["persons"].transform([persons])[0]],
+        "lug_boot": [encoders["lug_boot"].transform([lug_boot])[0]],
+        "safety": [encoders["safety"].transform([safety])[0]],
+    })
 
-# Predict
-prediction = knn.predict(user_input)
-predicted_class = encoder.inverse_transform(prediction)[0]
+    # Predict car quality
+    prediction = knn.predict(user_input)
+    predicted_class = encoders["class"].inverse_transform(prediction)[0]  # Convert back to original label
 
-# Display Result
-st.success(f"### 🚘 Predicted Car Quality: *{predicted_class}*")
+    # Display result
+    st.success(f"### 🚘 Predicted Car Quality: *{predicted_class}*")
+
+    # Additional Confidence or Probability (if applicable)
+    # If you want to display confidence (KNN doesn't provide confidence directly, but you can check distances)
+    distances, _ = knn.kneighbors(user_input)
+    st.write(f"### Average Distance to Neighbors: {distances.mean():.2f}")
+
+else:
+    st.warning("No data available to process. Please check the file path or dataset.")
